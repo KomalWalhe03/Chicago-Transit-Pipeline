@@ -9,7 +9,20 @@ This project implements an end-to-end Big Data pipeline for analyzing Chicago Ta
 * **Data Processing:** Python + Polars (High-performance Apache Arrow dataframes)
 * **Visualization:** Streamlit + Plotly
 * **Orchestration:** Custom Python Pipeline
-
+### System Architecture Diagram
+```mermaid
+graph TD
+    A[Socrata API Source] -->|JSON Stream| B(src/download_data.py)
+    B -->|Ingest| C[(MongoDB: raw_trips)]
+    C -->|Fetch| D(src/clean.py)
+    D -->|Polars Cleaning| D
+    D -->|Save Parquet| E[Silver Layer: .parquet]
+    D -->|Write Clean| F[(MongoDB: silver_trips)]
+    F -->|Fetch| G(src/aggregate.py)
+    G -->|Aggregation| H[(MongoDB: Gold Collections)]
+    H -->|Read| I[Streamlit Dashboard]
+    I -->|Visualize| J[End User]
+```
 ## Pipeline Layers
 1.  **Bronze (Raw):** Ingests raw CSV data from the Chicago Data Portal API.
 2.  **Silver (Clean):** Performs deduplication, schema validation, and null handling. Saves data as Parquet (Columnar storage).

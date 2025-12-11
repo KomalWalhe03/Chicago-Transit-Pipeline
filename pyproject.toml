@@ -17,3 +17,10 @@ dependencies = [
     "requests>=2.32.5",
     "streamlit>=1.52.1",
 ]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.0",
+    "pytest>=9.0.2",
+    "types-requests>=2.32.4.20250913",
+]
