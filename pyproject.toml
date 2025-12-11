@@ -1,0 +1,19 @@
+[project]
+name = "chicago-transit-analytics-pipeline"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "loguru>=0.7.3",
+    "mypy>=1.19.0",
+    "pandas>=2.3.3",
+    "plotly>=6.5.0",
+    "polars>=1.36.1",
+    "pydantic>=2.12.5",
+    "pymongo>=4.15.5",
+    "pytest>=9.0.2",
+    "python-dotenv>=1.2.1",
+    "requests>=2.32.5",
+    "streamlit>=1.52.1",
+]
