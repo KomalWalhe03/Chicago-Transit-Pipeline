@@ -1,24 +1,37 @@
 import polars as pl
 from pymongo import MongoClient
-from loguru import logger
+import logging
 import os
 
-# Connection Details
+# --- LOGGING SETUP ---
+logger = logging.getLogger("ChicagoTransitPipeline")
+
+# --- CONFIGURATION ---
 MONGO_URI = "mongodb://admin:secret@localhost:27017/"
 DB_NAME = "chicago_transit"
 SOURCE_COLLECTION = "raw_trips"
 TARGET_COLLECTION = "silver_trips"
+PARQUET_PATH = "data/processed/silver_trips.parquet"
 
-def clean_data():
+# --- RENAMED TO MATCH PIPELINE ---
+def clean_and_load_silver():
+    """
+    Fetches raw data, cleans it using Polars, and saves to Silver Layer.
+    """
     client = MongoClient(MONGO_URI)
     db = client[DB_NAME]
     
-    # Fetch raw data from Bronze layer
-    logger.info("Fetching raw data...")
+    # 1. Fetch Data
+    logger.info("Fetching raw data from Bronze layer (MongoDB)...")
     data = list(db[SOURCE_COLLECTION].find({}, {"_id": 0}))
+    
+    if not data:
+        logger.warning("No data found in raw_trips! Skipping Silver cleaning.")
+        return
+
     df = pl.DataFrame(data)
     
-    # Define schema for validation
+    # Define schema columns to keep
     keep_cols = [
         "trip_id", "taxi_id", "trip_start_timestamp", "trip_end_timestamp",
         "trip_seconds", "trip_miles", "fare", "tips", "tolls", "extras",
@@ -29,8 +42,9 @@ def clean_data():
     # Filter dataset to strictly include defined columns
     df = df.select([c for c in keep_cols if c in df.columns])
 
-    logger.info(f"Processing {len(df)} rows with strict cleaning...")
+    logger.info(f"Processing {len(df)} rows with strict cleaning rules...")
 
+    # 2. Apply Polars Cleaning Logic
     df_clean = (
         df
         # Enforce type consistency for numerical fields
@@ -38,13 +52,13 @@ def clean_data():
             pl.col("trip_seconds").cast(pl.Float64),
             pl.col("trip_miles").cast(pl.Float64),
             pl.col("fare").cast(pl.Float64),
-            pl.col("tips").cast(pl.Float64).fill_null(0.0),   # Fill missing tips with 0
-            pl.col("tolls").cast(pl.Float64).fill_null(0.0),  # Fill missing tolls with 0
+            pl.col("tips").cast(pl.Float64).fill_null(0.0),   
+            pl.col("tolls").cast(pl.Float64).fill_null(0.0), 
             pl.col("extras").cast(pl.Float64).fill_null(0.0),
             pl.col("trip_total").cast(pl.Float64)
         ])
         
-        # Apply cleaning logic
+        # Apply filters
         .unique(subset=["trip_id"])           # Deduplicate by Trip ID
         .filter(pl.col("trip_seconds") > 60)  # Remove short trips (< 1 min)
         .filter(pl.col("trip_miles") > 0)     # Remove zero-distance trips
@@ -60,20 +74,19 @@ def clean_data():
     )
 
     final_count = len(df_clean)
-    logger.success(f"Final Cleaned Count: {final_count} rows")
+    logger.info(f"Final Cleaned Count: {final_count} rows")
 
-    # Save snapshot to Parquet for efficient storage
-    os.makedirs("data/processed", exist_ok=True)
-    parquet_path = "data/processed/silver_trips.parquet"
-    df_clean.write_parquet(parquet_path)
-    logger.info(f"Saved parquet file to {parquet_path} (Size: {os.path.getsize(parquet_path)/1024**2:.2f} MB)")
+    # 3. Save to Parquet (for the Gold Step)
+    os.makedirs(os.path.dirname(PARQUET_PATH), exist_ok=True)
+    df_clean.write_parquet(PARQUET_PATH)
+    logger.info(f"Saved parquet file to {PARQUET_PATH}")
 
-    # Update Silver Layer in MongoDB
+    # 4. Update MongoDB Silver Collection
     target_col = db[TARGET_COLLECTION]
     target_col.delete_many({})
     if final_count > 0:
         target_col.insert_many(df_clean.to_dicts())
-        logger.success("Updated MongoDB 'silver_trips' collection.")
+        logger.info("Updated MongoDB 'silver_trips' collection.")
 
 if __name__ == "__main__":
-    clean_data()
+    clean_and_load_silver()

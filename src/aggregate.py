@@ -1,50 +1,87 @@
 import polars as pl
 from pymongo import MongoClient
-from loguru import logger
+import logging
 import os
 
-# Connection Details
+# --- LOGGING SETUP ---
+logger = logging.getLogger("ChicagoTransitPipeline")
+
+# --- CONFIGURATION ---
 MONGO_URI = "mongodb://admin:secret@localhost:27017/"
 DB_NAME = "chicago_transit"
 PARQUET_FILE = "data/processed/silver_trips.parquet"
 
-def aggregate_data():
-    client = MongoClient(MONGO_URI)
-    db = client[DB_NAME]
-
-    # Load clean data from Parquet for high-performance aggregation
+def aggregate_gold_metrics():
+    """
+    Reads clean Silver data (Parquet), performs business aggregations,
+    and saves results to the Gold Layer (MongoDB).
+    """
     if not os.path.exists(PARQUET_FILE):
-        logger.error(f"Parquet file {PARQUET_FILE} not found. Ensure clean.py has been executed.")
+        logger.error(f"Silver Parquet file not found: {PARQUET_FILE}. Run Step 2 first.")
         return
 
-    logger.info(f"Loading data from {PARQUET_FILE}...")
+    logger.info("Loading Silver Layer data from Parquet...")
     df = pl.read_parquet(PARQUET_FILE)
     logger.info(f"Loaded {len(df)} rows for aggregation.")
 
-    # --- Aggregation 1: Traffic Trends by Hour ---
-    # Analyzing peak hours for trips and fare averages
-    logger.info("Computing hourly traffic stats...")
-    df_hourly = (
+    client = MongoClient(MONGO_URI)
+    db = client[DB_NAME]
+
+    # ----------------------------------------------------------------
+    # AGGREGATION 1: HOURLY TRAFFIC PATTERNS
+    # ----------------------------------------------------------------
+    logger.info("Computing Hourly Traffic Stats...")
+    
+    # CRITICAL FIX: Explicitly convert String to Datetime before extracting .dt.hour()
+    # This prevents the "InvalidOperationError: hour operation not supported for dtype str"
+    hourly_stats = (
         df.with_columns(
-            pl.col("trip_start_timestamp").str.strptime(pl.Datetime, format="%Y-%m-%dT%H:%M:%S.%f").dt.hour().alias("hour")
+            pl.col("trip_start_timestamp")
+            .str.to_datetime(strict=False) # Convert String -> Datetime
+            .dt.hour() # Extract Hour
+            .alias("hour")
         )
         .group_by("hour")
         .agg([
-            pl.len().alias("total_trips"),
+            pl.len().alias("trip_count"), # Match dashboard expected column name
             pl.col("fare").mean().round(2).alias("avg_fare"),
             pl.col("duration_min").mean().round(2).alias("avg_duration")
         ])
         .sort("hour")
     )
     
-    # Save Hourly Stats to Gold Layer
-    db["gold_hourly_stats"].delete_many({})
-    db["gold_hourly_stats"].insert_many(df_hourly.to_dicts())
+    # Save to MongoDB
+    col_hourly = db["gold_hourly_stats"]
+    col_hourly.delete_many({})
+    col_hourly.insert_many(hourly_stats.to_dicts())
+    logger.info("Saved 'gold_hourly_stats' to MongoDB.")
 
-    # --- Aggregation 2: Top Pickup Areas ---
-    # Identifying high-density community areas
-    logger.info("Computing top pickup locations...")
-    df_areas = (
+    # ----------------------------------------------------------------
+    # AGGREGATION 2: PAYMENT TYPE PREFERENCES
+    # ----------------------------------------------------------------
+    logger.info("Computing Payment Type Stats...")
+    
+    payment_stats = (
+        df.group_by("payment_type")
+        .agg([
+            pl.len().alias("count"),
+            pl.col("trip_total").mean().round(2).alias("avg_cost")
+        ])
+        .sort("count", descending=True)
+    )
+    
+    # Save to MongoDB
+    col_pay = db["gold_payment_stats"]
+    col_pay.delete_many({})
+    col_pay.insert_many(payment_stats.to_dicts())
+    logger.info("Saved 'gold_payment_stats' to MongoDB.")
+
+    # ----------------------------------------------------------------
+    # AGGREGATION 3: TOP PICKUP AREAS
+    # ----------------------------------------------------------------
+    logger.info("Computing Top Pickup Areas...")
+    
+    area_stats = (
         df.group_by("pickup_community_area")
         .agg([
             pl.len().alias("trip_count"),
@@ -53,24 +90,14 @@ def aggregate_data():
         .sort("trip_count", descending=True)
         .head(10) # Top 10 areas only
     )
-
-    # Save Area Stats to Gold Layer
-    db["gold_area_stats"].delete_many({})
-    db["gold_area_stats"].insert_many(df_areas.to_dicts())
-
-    # --- Aggregation 3: Payment Method Analysis ---
-    logger.info("Computing payment method distribution...")
-    df_payment = (
-        df.group_by("payment_type")
-        .agg(pl.len().alias("count"))
-        .sort("count", descending=True)
-    )
-
-    # Save Payment Stats to Gold Layer
-    db["gold_payment_stats"].delete_many({})
-    db["gold_payment_stats"].insert_many(df_payment.to_dicts())
-
-    logger.success("Gold Layer aggregations complete. Insights saved to MongoDB.")
+    
+    # Save to MongoDB
+    col_area = db["gold_area_stats"]
+    col_area.delete_many({})
+    col_area.insert_many(area_stats.to_dicts())
+    logger.info("Saved 'gold_area_stats' to MongoDB.")
+    
+    logger.info(" Gold Layer Aggregations Complete.")
 
 if __name__ == "__main__":
-    aggregate_data()
+    aggregate_gold_metrics()

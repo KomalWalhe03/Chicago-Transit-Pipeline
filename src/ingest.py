@@ -8,12 +8,17 @@ import time
 MONGO_URI = "mongodb://admin:secret@localhost:27017/"
 DB_NAME = "chicago_transit"
 COLLECTION_NAME = "raw_trips"
-DATA_FILE = "data/raw_data.csv"
 
-def ingest_data():
+# --- RENAMED FUNCTION TO MATCH PIPELINE ---
+def ingest_raw_data(file_path):
+    """
+    Ingests the CSV data into MongoDB (Bronze Layer) using Polars.
+    Args:
+        file_path (str): Path to the downloaded CSV file.
+    """
     # Verify raw data file exists
-    if not os.path.exists(DATA_FILE):
-        logger.error(f"File {DATA_FILE} not found! Ensure download_data.py has been executed.")
+    if not os.path.exists(file_path):
+        logger.error(f"File {file_path} not found! Ensure download_data.py has been executed.")
         return
 
     # Establish MongoDB connection
@@ -23,26 +28,32 @@ def ingest_data():
     collection = db[COLLECTION_NAME]
 
     # Load data efficiently using Polars
-    logger.info(f"Reading {DATA_FILE}...")
+    logger.info(f"Reading {file_path}...")
     start_time = time.time()
     
     # Read CSV and drop rows with missing Trip IDs
-    df = pl.read_csv(DATA_FILE, ignore_errors=True).drop_nulls(subset=["trip_id"])
-    
-    # Convert DataFrame to dictionary format for MongoDB insertion
-    logger.info("Converting to JSON format...")
-    records = df.to_dicts()
-    
-    # Batch insert records into MongoDB
-    count = len(records)
-    logger.info(f"Inserting {count} rows into MongoDB...")
-    
-    if records:
-        collection.delete_many({}) # Ensure idempotency by clearing existing collection
-        collection.insert_many(records)
-    
-    duration = time.time() - start_time
-    logger.success(f"Successfully ingested {count} rows in {duration:.2f} seconds!")
+    try:
+        df = pl.read_csv(file_path, ignore_errors=True).drop_nulls(subset=["trip_id"])
+        
+        # Convert DataFrame to dictionary format for MongoDB insertion
+        logger.info("Converting to JSON format...")
+        records = df.to_dicts()
+        
+        # Batch insert records into MongoDB
+        count = len(records)
+        logger.info(f"Inserting {count} rows into MongoDB...")
+        
+        if records:
+            collection.delete_many({}) # Ensure idempotency by clearing existing collection
+            collection.insert_many(records)
+        
+        duration = time.time() - start_time
+        logger.success(f"Successfully ingested {count} rows in {duration:.2f} seconds!")
+        
+    except Exception as e:
+        logger.error(f"Ingestion failed: {e}")
+        raise e
 
 if __name__ == "__main__":
-    ingest_data()
+    # Test locally
+    ingest_raw_data("data/raw_data.csv")

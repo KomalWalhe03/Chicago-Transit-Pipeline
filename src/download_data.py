@@ -8,11 +8,16 @@ BASE_URL = f"https://data.cityofchicago.org/resource/{DATASET_ID}.csv"
 LIMIT = 800000  # Define row limit for dataset
 OUTPUT_FILE = "data/raw_data.csv"
 
-def fetch_data():
+# --- RENAMED FUNCTION TO MATCH PIPELINE ---
+def download_dataset():
+    """
+    Fetches the latest dataset from the Chicago Data Portal API.
+    Returns:
+        str: The file path of the downloaded CSV, or None if failed.
+    """
     os.makedirs("data", exist_ok=True)
     
     # Configure API parameters for latest data
-    # Fetching in descending order to get the most recent records
     params = {
         "$limit": LIMIT,
         "$order": "trip_start_timestamp DESC" 
@@ -33,14 +38,14 @@ def fetch_data():
         size_mb = os.path.getsize(OUTPUT_FILE) / (1024 * 1024)
         if size_mb < 1:
             logger.error(f"FAIL: File is too small ({size_mb:.2f} MB).")
-            # Inspect response content on failure to identify API errors
-            with open(OUTPUT_FILE, 'r') as f:
-                print("API ERROR MESSAGE:", f.read(200)) 
+            return None # Return None on failure
         else:
             logger.success(f"Success! Downloaded {size_mb:.2f} MB to {OUTPUT_FILE}")
+            return OUTPUT_FILE # --- CRITICAL: Return the path to the pipeline ---
             
     except Exception as e:
         logger.error(f"Network Failed: {e}")
+        return None
 
 if __name__ == "__main__":
-    fetch_data()
+    download_dataset()
