@@ -9,7 +9,7 @@ This project implements an end-to-end Big Data pipeline for analyzing Chicago Ta
 * **Data Processing:** Python + Polars (High-performance Apache Arrow dataframes)
 * **Visualization:** Streamlit + Plotly
 * **Orchestration:** Custom Python Pipeline
-* **Cluster Configuration:** Single-node MongoDB instance (Docker). *Note: Designed to scale to a 3-node Replica Set (Primary-Secondary-Secondary) in production for high availability.*git add .
+* **Cluster Configuration:** Single-node MongoDB instance (Docker). *Note: Designed to scale to a 3-node Replica Set (Primary-Secondary-Secondary) in production for high availability.
 ### System Architecture Diagram
 ```mermaid
 graph TD
