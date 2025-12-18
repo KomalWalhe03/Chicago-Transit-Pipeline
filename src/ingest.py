@@ -5,11 +5,12 @@ import os
 import time
 
 # Connection Details
-MONGO_URI = "mongodb://admin:secret@localhost:27017/"
+# Load from environment or use default for local testing
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:secret@localhost:27017/")
 DB_NAME = "chicago_transit"
 COLLECTION_NAME = "raw_trips"
 
-# --- RENAMED FUNCTION TO MATCH PIPELINE ---
+
 def ingest_raw_data(file_path):
     """
     Ingests the CSV data into MongoDB (Bronze Layer) using Polars.

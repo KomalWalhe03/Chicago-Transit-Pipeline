@@ -2,12 +2,15 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from pymongo import MongoClient
+import os
 
 # --- Dashboard Configuration ---
 st.set_page_config(page_title="Chicago Transit Analytics", layout="wide")
 
 # --- Database Connection ---
-MONGO_URI = "mongodb://admin:secret@localhost:27017/"
+
+# Load from environment or use default for local testing
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:secret@localhost:27017/")
 client = MongoClient(MONGO_URI)
 db = client["chicago_transit"]
 

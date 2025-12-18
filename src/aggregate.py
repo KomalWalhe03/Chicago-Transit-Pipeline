@@ -7,7 +7,8 @@ import os
 logger = logging.getLogger("ChicagoTransitPipeline")
 
 # --- CONFIGURATION ---
-MONGO_URI = "mongodb://admin:secret@localhost:27017/"
+# Load from environment or use default for local testing
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:secret@localhost:27017/")
 DB_NAME = "chicago_transit"
 PARQUET_FILE = "data/processed/silver_trips.parquet"
 

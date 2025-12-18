@@ -7,7 +7,8 @@ import os
 logger = logging.getLogger("ChicagoTransitPipeline")
 
 # --- CONFIGURATION ---
-MONGO_URI = "mongodb://admin:secret@localhost:27017/"
+# Load from environment or use default for local testing
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:secret@localhost:27017/")
 DB_NAME = "chicago_transit"
 SOURCE_COLLECTION = "raw_trips"
 TARGET_COLLECTION = "silver_trips"
